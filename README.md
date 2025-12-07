@@ -7,7 +7,6 @@
 - [Dataset Overview](#dataset-overview)
 - [Data Description](#data-description)
 - [Data Cleaning](#data-cleaning)
-- [Feature Engineering](#feature-engineering)
 - [Data Modeling (Schema & Relationships)](#data-modeling-schema--relationships)
 - [DAX Measures (Power BI Calculations)](#dax-measures-power-bi-calculations)
 - [Dashboard Development (Pages & Visuals)](#dashboard-development-pages--visuals)
@@ -89,6 +88,301 @@ Data cleaning and preparation were performed in **Power BI** using **Power Query
      - Each `customer_id` in `loan_data` exists in `customer_data`.  
 
 By using Power Query, all data transformations were **applied systematically and reproducibly**, ensuring that the datasets are clean, consistent, and ready for feature engineering, modeling, and dashboard development in Power BI.
+
+
+## 7. Data Modeling
+
+The project uses a **star-schema data model**, connecting loan, customer, payment, credit score, and risk assessment data to enable smooth analysis and cross-filtering across visuals.
+
+---
+
+### 📁 Tables in the Data Model
+
+#### **1. `customer_data` (Fact)**
+- `customer_id`
+- `age`
+- `city`
+- `address`
+- `Age Group`
+
+#### **2. `LoanPerformance`**
+- `loan_id`
+- `customer_id`
+- `loan_amount`
+- `loan_term`
+- `interest_rate`
+- `loan_status`
+
+#### **3. `payment_history`**
+- `payment_id`
+- `loan_id`
+- `payment_date`
+- `amount_paid`
+- `payment_status`
+
+#### **4. `credit_score_data`**
+- `customer_id`
+- `credit_score`
+- `score_date`
+- *Latest Credit Score* (calculated)
+
+#### **5. `risk_assessment`**
+- `assessment_id`
+- `customer_id`
+- `loan_amount`
+- `credit_score`
+
+---
+
+### 🔗 Relationship Structure
+
+- **customer_data (1)** → **LoanPerformance (*)**
+- **LoanPerformance (1)** → **payment_history (*)**
+- **customer_data (1)** → **credit_score_data (*)**
+- **customer_data (1)** → **risk_assessment (*)**
+
+These relationships allow:
+- Customer-level filtering across all tables  
+- Linking loan records to payment history  
+- Tracking credit score trends  
+- Assessing loan risk per customer  
+
+---
+<img width="1138" height="726" alt="image" src="https://github.com/user-attachments/assets/b8d43cce-a364-4fcf-b318-63c2e59b695e" />
+
+### 📌 Summary
+
+The modeling structure supports:
+- Customer profiling  
+- Loan lifecycle tracking  
+- Default and risk analysis  
+- Credit score monitoring  
+- Drill-through capabilities  
+
+---
+## 8. DAX Measures
+
+This project uses several DAX measures to compute KPIs, aggregations, default metrics, credit score calculations, and risk levels.  
+These measures help drive the analytical visuals in the Loan Risk Assessment Dashboard.
+
+---
+
+### 🔹 **1. Total Loan Amount**
+Total Loan Amount = SUM(LoanPerformance[loan_amount])
+
+Age Group = SWITCH(TRUE(),
+  'customer_data (Fact)'[age] < 25, "<25",
+  'customer_data (Fact)'[age] <= 34, "25-34",
+  'customer_data (Fact)'[age] <= 44, "35-44",
+  'customer_data (Fact)'[age]<= 54, "45-54",
+   'customer_data (Fact)'[age]<= 64, "55-64",
+  "65+"
+)
+
+Highest_Default_Age = 
+CALCULATE(
+    MAX('customer_data (Fact)'[Age Group]),
+    FILTER(
+        'LoanPerformance',
+        'LoanPerformance'[loan_status] = "Defaulted"
+    )
+)
+female = CALCULATE(COUNTROWS('customer_data (Fact)'),FILTER('customer_data (Fact)','customer_data (Fact)'[gender] = "Female"))
+male = CALCULATE(COUNTROWS('customer_data (Fact)'),FILTER('customer_data (Fact)','customer_data (Fact)'[gender] = "Male"))
+
+
+Highest_Default_Age = 
+CALCULATE(
+    MAX('customer_data (Fact)'[Age Group]),
+    FILTER(
+        'LoanPerformance',
+        'LoanPerformance'[loan_status] = "Defaulted"
+    )
+)
+
+Income Range = 
+SWITCH(
+    TRUE(),
+    'customer_data (Fact)'[income] <= 2000, "0–2K",
+    'customer_data (Fact)'[income] <= 4000, "2K–4K",
+    'customer_data (Fact)'[income] <= 6000, "4K–6K",
+    'customer_data (Fact)'[income] <= 8000, "6K–8K",
+    'customer_data (Fact)'[income] <= 10000, "8K–10K",
+    'customer_data (Fact)'[income] <= 12000, "10K–12K",
+    'customer_data (Fact)'[income] <= 14000, "12K–14K",
+    'customer_data (Fact)'[income] <= 16000, "14K–16K",
+    "16K+"
+)
+
+Avg_Loan_Term = AVERAGE('LoanPerformance'[loan_term])
+
+Default  Percentage = 
+DIVIDE(
+    [Defaulted Count], 
+    COUNTROWS('LoanPerformance'), 
+    0
+) * 100
+
+Defaulted Count = CALCULATE(COUNTROWS('LoanPerformance'),'LoanPerformance'[loan_status] = "Defaulted")
+
+paid of count = CALCULATE(COUNTROWS('LoanPerformance'),'LoanPerformance'[loan_status]= "Paid off")
+
+Paid off  Percentage = 
+DIVIDE(
+    [paid of count], 
+    COUNTROWS('LoanPerformance'), 
+    0
+) * 100
+
+Total Defaulted Amount = 
+CALCULATE(
+    SUM('LoanPerformance'[Loan_amount]),
+    'LoanPerformance'[loan_status] = "Defaulted"
+)
+
+Total Missed Amount = 
+CALCULATE(
+    SUM('LoanPerformance'[Loan_amount]),
+    'LoanPerformance'[loan_status] = "Missed"
+)
+
+Total PaidOff Amount = 
+CALCULATE(
+    SUM('risk_assessment'[loan_amount]),
+    'LoanPerformance'[Loan_status] = "Paid Off"
+)
+
+% High Risk = 
+DIVIDE(
+    [High Risk Count],
+    CALCULATE(COUNTROWS(risk_assessment))
+)
+
+High Risk Count = 
+CALCULATE(
+    COUNTROWS(risk_assessment),
+    risk_assessment[risk_level]= "High"
+)
+
+
+High Risk Customers = 
+CALCULATE(COUNT(risk_assessment[customer_id]), risk_assessment[risk_level] = "High")
+
+
+## 9. Dashboard Development
+
+The dashboard was designed in **Power BI** to provide a complete view of loan performance, customer behavior, payment history, credit scoring, and risk levels.  
+It consists of **multiple visuals** arranged to deliver insights in a clean and business-focused layout.
+
+---
+
+### 🎨 **Dashboard Pages**
+
+#### **1. Loan Overview Dashboard**
+This main page provides a high-level summary of loan KPIs and performance metrics.
+
+---
+
+### 📊 **Visuals Included**
+
+#### **🔹 KPI Cards**
+- **Average Interest Rate**
+- **Total Loan Amount**
+- **Total Customers**
+- **Defaulted Count**
+- **Average Loan Term**
+
+These KPIs give a quick snapshot of overall loan portfolio performance.
+
+---
+
+### 🔹 **Monthly Paid Amount (Line Chart)**
+Shows monthly payment trends to identify:
+- High payment months  
+- Seasonal trends  
+- Fluctuations in loan repayment behavior  
+
+---
+
+### 🔹 **Loan Applications by Age Group (Bar Chart)**
+Displays how different age groups contribute to loan applications.  
+Helps understand customer demographic distribution.
+
+---
+
+### 🔹 **Loan Status (Donut Chart)**
+Breakdown of:
+- Approved  
+- Paid Off  
+- Rejected  
+- Defaulted  
+
+Provides a clear picture of the loan lifecycle.
+
+---
+
+### 🔹 **Risk Level Ratio (Donut Chart)**
+Displays:
+- High Risk  
+- Medium Risk  
+- Low Risk  
+
+Helps in portfolio risk segmentation.
+
+---
+
+### 🔹 **Default Percentage by Loan Term (Scatter Plot)**
+Shows the relationship between:
+- Loan terms  
+- Default percentages  
+
+Helps identify whether longer terms have higher default probability.
+
+---
+
+### 🔹 **Customer Credit Score Integration**
+Using DAX, the dashboard shows:
+- Latest Credit Score  
+- Risk classification  
+- Customer-level filtering  
+
+This enhances customer scoring and default prediction analysis.
+
+---
+
+### 🔹 **Filter / Slicer Panel**
+Includes dynamic filters:
+- **Month**
+- **Payment Status**
+- **Loan ID / Loan Amount List**
+- **Drill Through Options**
+
+These allow the user to interactively explore loan records.
+
+---
+
+### 📌 **Dashboard Design Notes**
+- Dark theme for modern & clean look  
+- Teal accent color for highlights  
+- Consistent spacing and layout  
+- Simple icons for clarity  
+- Visuals aligned for readability  
+
+---
+
+### 📥 **PBIX File Location**
+
+The full interactive dashboard is stored in:
+<img width="1156" height="691" alt="image" src="https://github.com/user-attachments/assets/393c5354-fcd5-485c-bc53-aa5a545d006d" />
+
+<img width="1129" height="732" alt="image" src="https://github.com/user-attachments/assets/200db4a3-2bda-44bf-a4c8-971e6719beab" />
+
+<img width="1264" height="692" alt="image" src="https://github.com/user-attachments/assets/46aa7eb0-d58b-48f5-92bb-70453a34bd30" />
+
+
+Drill Through Page 
+<img width="652" height="499" alt="image" src="https://github.com/user-attachments/assets/2eb376c9-f2b9-409f-8c8e-6edaaf7bd90b" />
+
 
 
 
